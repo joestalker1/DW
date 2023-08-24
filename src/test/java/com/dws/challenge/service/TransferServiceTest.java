@@ -2,7 +2,6 @@ package com.dws.challenge.service;
 
 
 import com.dws.challenge.domain.Account;
-import com.dws.challenge.exception.LockServiceException;
 import com.dws.challenge.exception.ServiceException;
 import com.dws.challenge.repository.AccountsRepository;
 import org.junit.jupiter.api.Test;
@@ -13,7 +12,11 @@ import static org.assertj.core.api.Assertions.*;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 @SpringBootTest
 public class TransferServiceTest {
@@ -26,8 +29,10 @@ public class TransferServiceTest {
     @Autowired
     private AdvisoryLockService lockService;
 
+    private static ExecutorService execServ = Executors.newFixedThreadPool(1);
+
     @Test
-    public void testTransferMoney(){
+    public void testTransferMoney() {
         Account fromAccount = new Account("accId1");
         Account toAccount = new Account("accId2");
         assertThat(toAccount.getBalance()).isEqualTo(BigDecimal.ZERO);
@@ -53,13 +58,13 @@ public class TransferServiceTest {
         Exception exp = assertThrows(ServiceException.class, () -> transferService.transfer(fromAccount, toAccount, amount));
         assertThat(exp.getMessage()).contains("doesn't contain enough money.");
         //check that accounts are available after failed transfer
-        Optional<AdvisoryLockService.Token> locked = lockService.acquire(fromAccount.getAccountId(), toAccount.getAccountId());
+        Optional<AdvisoryLockService.Token> locked = lockService.acquire(List.of(fromAccount.getAccountId(), toAccount.getAccountId()), 1);
         assertThat(locked).isNotEmpty();
         lockService.release(locked.get());
     }
 
     @Test
-    public void testDontTransferAccountsAreAcquired() {
+    public void tesTransferAccountsEvenAccountIsAcquiredAndReleased() {
         final Account fromAccount = new Account("accId1");
         final Account toAccount = new Account("accId2");
         assertThat(toAccount.getBalance()).isEqualTo(BigDecimal.ZERO);
@@ -67,10 +72,32 @@ public class TransferServiceTest {
         fromAccount.setBalance(amount);
         accountsRepository.save(fromAccount);
         accountsRepository.save(toAccount);
-        Optional<AdvisoryLockService.Token> locked = lockService.acquire(fromAccount.getAccountId(), toAccount.getAccountId());
-        assertThat(locked).isNotEmpty();
-        Exception exp = assertThrows(LockServiceException.class, () -> transferService.transfer(fromAccount, toAccount, amount));
-        assertThat(exp.getMessage()).startsWith("Cannot acquired the lock for the accounts");
+        final CountDownLatch latch = new CountDownLatch(1);
+        execServ.submit(() -> {
+            Optional<AdvisoryLockService.Token> locked = lockService.acquire(List.of(fromAccount.getAccountId(), toAccount.getAccountId()), 1);
+            System.out.println(">>>>>>Accounts locked");
+            latch.countDown();
+            sleepFor(200);
+            lockService.release(locked.get());
+        });
+        await(latch);
+        transferService.transfer(fromAccount, toAccount, amount);
+        Account fromAccount1Changed = accountsRepository.getAccount(fromAccount.getAccountId());
+        assertThat(fromAccount1Changed.getBalance()).isEqualTo(BigDecimal.ZERO);
     }
 
+    private void await(CountDownLatch latch) {
+        try {
+            latch.await();
+        } catch (InterruptedException ignored) {
+        }
+    }
+
+    private void sleepFor(long pauiseInMillis) {
+        try {
+            Thread.sleep(pauiseInMillis);
+        } catch (InterruptedException ignored) {
+        }
+
+    }
 }

@@ -10,12 +10,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.validation.annotation.Validated;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Optional;
 
 @Service
 @Validated
 public class AccountsServiceImp implements AccountsService {
-
+    private static int RETRY_TIMES_TO_TAKE_LOCK = 300;
     @Getter
     private final AccountsRepository accountsRepository;
     @Getter
@@ -35,18 +36,15 @@ public class AccountsServiceImp implements AccountsService {
 
     /**
      * Return an account by accountId.First acquire the lock to
-     * get the mutual lock and reach out strong consistency.
-     * There is some trade-off between consistency and speed:
-     * when client app can't get this lock, it may show previous balance
-     * for short time interval and retry get balance again.
-     * In such way it works as snapshot consistency for account read operations
-     * for very short time,because write account operations are completed very fast.
-     *
+     * get the exclusive access and reach out strong consistency.
+     * If account can't locked, it throws exception.
+     * Transfer money is fast,so this operation waits for short time.
+     * RETRY_TIMES_TO_TAKE_LOCK is allows to eliminate the startvation.
      * @param accountId
      * @return
      */
     public Account getAccount(@NonNull String accountId) {
-        Optional<AdvisoryLockService.Token> locked = lockService.acquire(accountId);
+        Optional<AdvisoryLockService.Token> locked = lockService.acquire(List.of(accountId), RETRY_TIMES_TO_TAKE_LOCK);
         if (locked.isEmpty())
             throw new LockServiceException("Cannot acquired the lock for the account " + accountId);
         try {
@@ -59,7 +57,8 @@ public class AccountsServiceImp implements AccountsService {
 
     /**
      * Transfer money between accounts,if fromAccount has enough balance.
-     * First it takes mutual lock, if it can't throw the exception.
+     * First it takes mutual lock,if if can't take the lock,it throws exception, but it's very rare case,
+     * because getAccount is very fast operation.
      *
      * @param fromAccountId
      * @param toAccountId

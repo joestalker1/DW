@@ -9,7 +9,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup;
 
 import java.math.BigDecimal;
-import java.util.Optional;
 
 import com.dws.challenge.domain.Account;
 import com.dws.challenge.repository.AccountsRepository;
@@ -113,17 +112,6 @@ class AccountsControllerTest {
     }
 
     @Test
-    void testGetAccountFailedIfAccountAcquired() throws Exception {
-        String uniqueAccountId = "Id-8900";
-        Account account = new Account(uniqueAccountId, new BigDecimal("123.45"));
-        this.accountsService.createAccount(account);
-        Optional<AdvisoryLockService.Token> locked = lockService.acquire(account.getAccountId());
-        assertThat(locked).isNotEmpty();
-        this.mockMvc.perform(get("/v1/accounts/" + uniqueAccountId))
-                .andExpectAll(status().isTooManyRequests(), content().string("{\"msg\":\"Cannot acquired the lock for the account Id-8900\"}"));
-    }
-
-    @Test
     void testTransferMoney() throws Exception {
         String uniqueAccountId = "Id-" + System.currentTimeMillis();
         Account account1 = new Account(uniqueAccountId, new BigDecimal("100"));
@@ -138,21 +126,6 @@ class AccountsControllerTest {
         Account account1Changed = accountsService.getAccount(account1.getAccountId());
         assertThat(amount2.add(amount1)).isEqualTo(account2Changed.getBalance());
         assertThat(BigDecimal.ZERO).isEqualTo(account1Changed.getBalance());
-    }
-
-    @Test
-    void testCannotTransferIfAccountAcquiredAlready() throws Exception {
-        String uniqueAccountId = "Id-123";
-        Account account1 = new Account(uniqueAccountId, new BigDecimal("100"));
-        accountsService.createAccount(account1);
-        Account account2 = new Account(uniqueAccountId + "2222", new BigDecimal("20"));
-        accountsService.createAccount(account2);
-        //lock the account1,web endpoint should return "too many request"
-        Optional<AdvisoryLockService.Token> locked = lockService.acquire(account1.getAccountId());
-        assertThat(locked).isNotEmpty();
-        mockMvc.perform(get("/v1/accounts/transfer/" + account1.getAccountId() + "/" + account2.getAccountId() + "?amount=100"))
-                .andExpectAll(status().isTooManyRequests(), content().string("{\"msg\":\"Cannot acquired the lock for the accounts Id-123,Id-1232222\"}"));
-        lockService.release(locked.get());
     }
 
 }

@@ -23,7 +23,7 @@ import java.util.stream.Collectors;
 @Service
 @Validated
 public class TransferServiceImp implements TransferService {
-
+    private static int RETRY_TIMES_TO_TAKE_LOCK = 300;
     @Setter
     @Autowired
     private AdvisoryLockService lockService;
@@ -42,16 +42,15 @@ public class TransferServiceImp implements TransferService {
 
 
     private void debitOrCreditAccount(TransferLog transferLog, Account account, BigDecimal amount, TransferStatus status) {
-        TransferLog newLog = transferLog.copyOf();
-        newLog.setStatus(status);
-        transferRepositoryLog.append(newLog);
+        transferLog.setStatus(status);
+        transferRepositoryLog.save(transferLog);
         account.setBalance(amount);
         accountsRepository.save(account);
     }
 
     @Override
     public void transfer(@NonNull Account from, @NonNull Account to, @NonNull BigDecimal amount) {
-        Optional<AdvisoryLockService.Token> locked = lockService.acquire(from.getAccountId(), to.getAccountId());
+        Optional<AdvisoryLockService.Token> locked = lockService.acquire(List.of(from.getAccountId(), to.getAccountId()), RETRY_TIMES_TO_TAKE_LOCK);
         if (locked.isEmpty())
             throw new LockServiceException("Cannot acquired the lock for the accounts " + List.of(from.getAccountId(), to.getAccountId()).stream().collect(Collectors.joining(",")));
 
@@ -68,9 +67,8 @@ public class TransferServiceImp implements TransferService {
             //credit to account
             debitOrCreditAccount(transferLog, to, to.getBalance().add(amount), TransferStatus.CREDIT_TO_ACCOUNT);
             //mark transfer as completed
-            TransferLog newLog = transferLog.copyOf();
-            newLog.setStatus(TransferStatus.COMPLETED);
-            transferRepositoryLog.append(newLog);
+            transferLog.setStatus(TransferStatus.COMPLETED);
+            transferRepositoryLog.save(transferLog);
             notificationService.notifyAboutTransfer(from, "Debited the account by " + amount);
             notificationService.notifyAboutTransfer(to, "Credited the account by " + amount);
         } catch (Exception ex) {
@@ -96,7 +94,7 @@ public class TransferServiceImp implements TransferService {
     private void rollback(TransferLog transferLog, Account fromAccount, Account toAccount, BigDecimal amount) {
         LocalDateTime transferLogUpdateAt = transferLog.getUpdatedAt();
         TransferStatus status = transferLog.getStatus();
-        //insert new log to set up failed status of transfer
+        //if it debited fromAccount,let's rollback it.
         if (status.equals(TransferStatus.DEBIT_FROM_ACCOUNT) || status.equals(TransferStatus.CREDIT_TO_ACCOUNT)) {
             fromAccount = accountsRepository.getAccount(fromAccount.getAccountId());
             if (fromAccount != null) {
@@ -104,6 +102,7 @@ public class TransferServiceImp implements TransferService {
                 updateAccount(fromAccount, fromAccount.getBalance().add(amount), transferLogUpdateAt);
             }
         }
+        //if it credited toAccount,let's rollback it.
         if (status.equals(TransferStatus.CREDIT_TO_ACCOUNT)) {
             toAccount = accountsRepository.getAccount(toAccount.getAccountId());
             if (toAccount != null) {
@@ -112,7 +111,7 @@ public class TransferServiceImp implements TransferService {
             }
         }
         transferLog.setStatus(TransferStatus.FAILED);
-        transferRepositoryLog.append(transferLog);
+        transferRepositoryLog.save(transferLog);
 
     }
 }

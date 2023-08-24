@@ -3,25 +3,25 @@ package com.dws.challenge.service;
 import com.dws.challenge.exception.LockServiceException;
 import lombok.Data;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
  * Simple advisory lock used by service layer.
  * If it acquires many accountIds, it makes sorting accountIds in lexicographical order.
- * It's simpler and scalable,than use real lock mutex java object.
- * You may use Redis to implement it.
+ * It's simpler and scalable,than use real mutex in Java.
+ * You may use Redis or Zookeeper to implement it.
  */
 public interface AdvisoryLockService {
     /**
-     * Acquire accountsId, it takes all-or-nothing accountIds,
+     * Acquire accountsIds, it does take all-or-nothing accountIds,
      * so if some of them is used by other account operation,
-     * this service returns Optional.empty.This doesn't throw exception
-     * to manage flow, and it makes this operation faster.
+     * This service try to get lock it with exponential retry,if it can't do it at once.
      *
      * @param accountId
      * @return
      */
-    Optional<Token> acquire(String... accountId);
+    Optional<Token> acquire(List<String> accountId, int retryTimes);
 
     /**
      * Release lock if it's known otherwise throws an exception.

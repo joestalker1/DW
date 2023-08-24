@@ -24,14 +24,15 @@ public class AdvisoryLockServiceImp implements AdvisoryLockService {
     private final Set<String> acquiredAccounts = new HashSet<>();
 
     @Override
-    public Optional<Token> acquire(@NonNull String... accountId) {
-        if (accountId.length == 0) {
+    public Optional<Token> acquire(@NonNull List<String> accountId, int retryTimes) {
+        if (accountId.size() == 0) {
             return Optional.empty();
         }
+        List<String> sortedAccountIds = new ArrayList<>();
+        sortedAccountIds.addAll(accountId);
         //sort accountId to get acquiring lock in the specific order
-        List<String> sortedAccountIds = Arrays.asList(accountId);
         sortedAccountIds.sort(Comparator.naturalOrder());
-        return tryAcquireLockFewTimes(sortedAccountIds, START_LOCK_PAUSE_IN_MILLIS, 3);
+        return tryAcquireLockFewTimes(sortedAccountIds, START_LOCK_PAUSE_IN_MILLIS, retryTimes);
     }
 
     private Boolean canAcquireAll(List<String> accIds) {

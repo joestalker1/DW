@@ -4,4 +4,4 @@
 * GetAccount and Transfer are fast operations.
 * Unit-tests contains the concurrent tests as well.
 * To rollback account balance,I used transferLog status,updateAt and Account updateAt fields.
-
+* I suppose to CQRS and SAGA to build distributed high perfomant solution.

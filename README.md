@@ -3,9 +3,9 @@
 
 # System design remarks
 * To run the application,please type './gradlew run'
-* Use advisory lock as faster and scalable solution.
-* Use retry for acquiring lock to eliminate thread starvation.
-* GetAccount and Transfer operations are fast operations.
+* Use advisory lock is scalable solution then the mutex is.
+* Use retry with restricted timeout for acquiring advisory lock to eliminate thread starvation.
+* GetAccount and Transfer money operations are fast operations.
 * Unit-tests contains the concurrent tests as well.
 * To rollback account balance,I used transferLog status,updateAt and Account updateAt fields.
 * I propose to use Redis or Zookeeper to implement advisory lock, 

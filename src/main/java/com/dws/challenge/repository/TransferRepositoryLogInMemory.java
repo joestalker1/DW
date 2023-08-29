@@ -24,7 +24,7 @@ public class TransferRepositoryLogInMemory implements TransferRepositoryLog {
     public Optional<TransferLog> findFor(String fromAccountId, String toAccountId) {
         String key = createKey(fromAccountId, toAccountId);
         TransferLog log = accountToTransfer.get(key);
-        return log == null ? Optional.empty() : Optional.of(log);
+        return Optional.ofNullable(log);
     }
 
 

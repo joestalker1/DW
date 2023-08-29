@@ -2,6 +2,7 @@ package com.dws.challenge.web;
 
 import com.dws.challenge.domain.Account;
 import com.dws.challenge.exception.DuplicateAccountIdException;
+import com.dws.challenge.exception.ServiceException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -12,6 +13,7 @@ import com.dws.challenge.service.AccountsService;
 
 import javax.validation.Valid;
 import java.math.BigDecimal;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/v1/accounts")
@@ -41,14 +43,17 @@ public class AccountsController {
     @GetMapping(path = "/{accountId}")
     public Account getAccount(@PathVariable String accountId) {
         log.info("Retrieving account for id {}", accountId);
-        return this.accountsService.getAccount(accountId);
+        Optional<Account> ifAccount = this.accountsService.getAccount(accountId);
+        if(ifAccount.isEmpty())
+             throw new ServiceException("Not found the account:" + accountId);
+        return ifAccount.get();
     }
 
 
-    @GetMapping(path = "/transfer/{fromAccount}/{toAccount}")
+    @PutMapping(path = "/transfer/{fromAccount}/{toAccount}")
     public ResponseEntity<String> transfer(@PathVariable String fromAccount, @PathVariable String toAccount, @RequestParam("amount") BigDecimal amouunt) {
         accountsService.transfer(fromAccount, toAccount, amouunt);
-        return new ResponseEntity<>("Completed", HttpStatus.OK);
+        return new ResponseEntity<>(HttpStatus.NO_CONTENT);
     }
 
 }

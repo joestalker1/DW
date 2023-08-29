@@ -48,32 +48,40 @@ public class TransferServiceImp implements TransferService {
         accountsRepository.save(account);
     }
 
-    @Override
-    public void transfer(@NonNull Account from, @NonNull Account to, @NonNull BigDecimal amount) {
-        Optional<AdvisoryLockService.Token> locked = lockService.acquire(List.of(from.getAccountId(), to.getAccountId()), RETRY_TIMES_TO_TAKE_LOCK);
-        if (locked.isEmpty())
-            throw new LockServiceException("Cannot acquired the lock for the accounts " + List.of(from.getAccountId(), to.getAccountId()).stream().collect(Collectors.joining(",")));
+    private void checkAccountBalance(Account account, BigDecimal needAmount) {
+        if (account.getBalance().compareTo(needAmount) < 0) {
+            notificationService.notifyAboutTransfer(account, "Doesn't have enough money for transfer");
+            throw new ServiceException(account + " doesn't contain enough money.");
+        }
+    }
 
-        TransferLog transferLog = transferRepositoryLog.create(from.getAccountId(), to.getAccountId(), amount);
+    private void markTransferAsCompleted(Account fromAccount, Account toAccount, BigDecimal amount, TransferLog log) {
+        log.setStatus(TransferStatus.COMPLETED);
+        transferRepositoryLog.save(log);
+        notificationService.notifyAboutTransfer(fromAccount, "Debited the account by " + amount);
+        notificationService.notifyAboutTransfer(toAccount, "Credited the account by " + amount);
+    }
+
+    @Override
+    public void transfer(@NonNull Account fromAccount, @NonNull Account toAccount, @NonNull BigDecimal amount) {
+        Optional<AdvisoryLockService.Token> locked = lockService.acquire(List.of(fromAccount.getAccountId(), toAccount.getAccountId()), RETRY_TIMES_TO_TAKE_LOCK);
+        if (locked.isEmpty())
+            throw new LockServiceException("Cannot acquired the lock for the accounts " + List.of(fromAccount.getAccountId(), toAccount.getAccountId()).stream().collect(Collectors.joining(",")));
+
+        TransferLog transferLog = transferRepositoryLog.create(fromAccount.getAccountId(), toAccount.getAccountId(), amount);
         try {
             //check amount in fromAccount
-            if (from.getBalance().compareTo(amount) < 0) {
-                notificationService.notifyAboutTransfer(from, "Doesn't have enough money for transfer");
-                throw new ServiceException(from + " doesn't contain enough money.");
-            }
+            checkAccountBalance(fromAccount, amount);
             //save current state of transfer to track its progress to recover it,if it fails.
             //debit from account
-            debitOrCreditAccount(transferLog, from, from.getBalance().subtract(amount), TransferStatus.DEBIT_FROM_ACCOUNT);
+            debitOrCreditAccount(transferLog, fromAccount, fromAccount.getBalance().subtract(amount), TransferStatus.DEBIT_FROM_ACCOUNT);
             //credit to account
-            debitOrCreditAccount(transferLog, to, to.getBalance().add(amount), TransferStatus.CREDIT_TO_ACCOUNT);
+            debitOrCreditAccount(transferLog, toAccount, toAccount.getBalance().add(amount), TransferStatus.CREDIT_TO_ACCOUNT);
             //mark transfer as completed
-            transferLog.setStatus(TransferStatus.COMPLETED);
-            transferRepositoryLog.save(transferLog);
-            notificationService.notifyAboutTransfer(from, "Debited the account by " + amount);
-            notificationService.notifyAboutTransfer(to, "Credited the account by " + amount);
+            markTransferAsCompleted(fromAccount, toAccount, amount, transferLog);
         } catch (Exception ex) {
             //rollback all changes
-            rollback(transferLog, from, to, amount);
+            rollback(transferLog, fromAccount, toAccount, amount);
             throw ex;
         } finally {
             lockService.release(locked.get());

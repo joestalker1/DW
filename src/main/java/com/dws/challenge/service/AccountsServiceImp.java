@@ -2,6 +2,7 @@ package com.dws.challenge.service;
 
 import com.dws.challenge.domain.Account;
 import com.dws.challenge.exception.LockServiceException;
+import com.dws.challenge.exception.ServiceException;
 import com.dws.challenge.repository.AccountsRepository;
 import lombok.Getter;
 import lombok.NonNull;
@@ -37,20 +38,22 @@ public class AccountsServiceImp implements AccountsService {
     /**
      * Return an account by accountId.First acquire the lock to
      * get the exclusive access and reach out strong consistency.
-     * If account can't locked, it throws exception.
+     * If account can't be locked, it throws exception.
      * Transfer money is fast,so this operation waits for short time.
-     * RETRY_TIMES_TO_TAKE_LOCK is allows to eliminate the startvation.
+     * RETRY_TIMES_TO_TAKE_LOCK is allows to eliminate the starvation.
+     *
      * @param accountId
      * @return
      */
-    public Account getAccount(@NonNull String accountId) {
+    public Optional<Account> getAccount(@NonNull String accountId) {
         Optional<AdvisoryLockService.Token> locked = lockService.acquire(List.of(accountId), RETRY_TIMES_TO_TAKE_LOCK);
         if (locked.isEmpty())
             throw new LockServiceException("Cannot acquired the lock for the account " + accountId);
         try {
-            return this.accountsRepository.getAccount(accountId);
+            Account account = this.accountsRepository.getAccount(accountId);
+            return Optional.ofNullable(account);
         } finally {
-            if (locked.isPresent()) lockService.release(locked.get());
+            locked.ifPresent(lck -> lockService.release(lck));
         }
 
     }
@@ -66,7 +69,16 @@ public class AccountsServiceImp implements AccountsService {
      */
     public void transfer(@NonNull String fromAccountId, @NonNull String toAccountId, @NonNull BigDecimal amount) {
         Account fromAccount = accountsRepository.getAccount(fromAccountId);
+        checkAccount(fromAccount, fromAccountId);
         Account toAccount = accountsRepository.getAccount(toAccountId);
+        checkAccount(toAccount, toAccountId);
         transferService.transfer(fromAccount, toAccount, amount);
+    }
+
+    private void checkAccount(Account account, String accountId) {
+        if (account == null) {
+            throw new ServiceException("Cannot find the account " + accountId);
+        }
+
     }
 }

@@ -72,7 +72,7 @@ public class TransferServiceTest {
         fromAccount.setBalance(amount);
         accountsRepository.save(fromAccount);
         accountsRepository.save(toAccount);
-        final CountDownLatch latch = new CountDownLatch(1);
+        CountDownLatch latch = new CountDownLatch(1);
         execServ.submit(() -> {
             Optional<AdvisoryLockService.Token> locked = lockService.acquire(List.of(fromAccount.getAccountId(), toAccount.getAccountId()), 1);
             System.out.println(">>>>>>Accounts locked");

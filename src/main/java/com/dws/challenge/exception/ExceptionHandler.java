@@ -16,13 +16,22 @@ public class ExceptionHandler {
 
     @org.springframework.web.bind.annotation.ExceptionHandler
     public ResponseEntity<ErrorMessage> handleException(ServiceException ex) {
-        ErrorMessage error = new ErrorMessage(ex.getMessage());
-        return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);
+        return createErrMessage(ex, HttpStatus.BAD_REQUEST);
     }
 
     @org.springframework.web.bind.annotation.ExceptionHandler
     public ResponseEntity<ErrorMessage> handleException(LockServiceException ex) {
+        return createErrMessage(ex, HttpStatus.TOO_MANY_REQUESTS);
+    }
+
+    @org.springframework.web.bind.annotation.ExceptionHandler
+    public ResponseEntity<ErrorMessage> handleException(javax.validation.ConstraintViolationException ex) {
+        return createErrMessage(ex, HttpStatus.BAD_REQUEST);
+    }
+
+    private ResponseEntity<ErrorMessage> createErrMessage(Exception ex, HttpStatus status) {
         ErrorMessage error = new ErrorMessage(ex.getMessage());
-        return new ResponseEntity<>(error, HttpStatus.TOO_MANY_REQUESTS);
+        return new ResponseEntity<>(error, status);
+
     }
 }

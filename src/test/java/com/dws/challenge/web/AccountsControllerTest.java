@@ -1,8 +1,7 @@
 package com.dws.challenge.web;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -56,8 +55,7 @@ class AccountsControllerTest {
     void createAccount() throws Exception {
         this.mockMvc.perform(post("/v1/accounts").contentType(MediaType.APPLICATION_JSON)
                 .content("{\"accountId\":\"Id-123\",\"balance\":1000}")).andExpect(status().isCreated());
-
-        Account account = accountsService.getAccount("Id-123");
+        Account account = accountsService.getAccount("Id-123").get();
         assertThat(account.getAccountId()).isEqualTo("Id-123");
         assertThat(account.getBalance()).isEqualByComparingTo("1000");
     }
@@ -112,6 +110,13 @@ class AccountsControllerTest {
     }
 
     @Test
+    void testGetAccountIfAccountNotFound() throws Exception {
+        this.mockMvc.perform(get("/v1/accounts/123"))
+                .andExpectAll(status().isBadRequest(), jsonPath("$.msg").value("Not found the account:123"));
+
+    }
+
+    @Test
     void testTransferMoney() throws Exception {
         String uniqueAccountId = "Id-" + System.currentTimeMillis();
         Account account1 = new Account(uniqueAccountId, new BigDecimal("100"));
@@ -120,12 +125,34 @@ class AccountsControllerTest {
         Account account2 = new Account(uniqueAccountId + "2222", new BigDecimal("20"));
         accountsService.createAccount(account2);
         BigDecimal amount2 = account2.getBalance();
-        mockMvc.perform(get("/v1/accounts/transfer/" + account1.getAccountId() + "/" + account2.getAccountId() + "?amount=100"))
+        mockMvc.perform(put("/v1/accounts/transfer/" + account1.getAccountId() + "/" + account2.getAccountId() + "?amount=100"))
                 .andExpectAll(status().isOk(), content().string("Completed"));
-        Account account2Changed = accountsService.getAccount(account2.getAccountId());
-        Account account1Changed = accountsService.getAccount(account1.getAccountId());
+        Account account2Changed = accountsService.getAccount(account2.getAccountId()).get();
+        Account account1Changed = accountsService.getAccount(account1.getAccountId()).get();
         assertThat(amount2.add(amount1)).isEqualTo(account2Changed.getBalance());
         assertThat(BigDecimal.ZERO).isEqualTo(account1Changed.getBalance());
     }
 
+    @Test
+    void testTransferMoneyIfAccountUnknown() throws Exception {
+        String uniqueAccountId = "Id-" + System.currentTimeMillis();
+        Account account1 = new Account(uniqueAccountId, new BigDecimal("100"));
+        BigDecimal amount1 = account1.getBalance();
+        accountsService.createAccount(account1);
+        mockMvc.perform(put("/v1/accounts/transfer/" + account1.getAccountId() + "/123?amount=100"))
+                .andExpectAll(status().isBadRequest(), jsonPath("$.msg").value("Cannot find the account 123"));
+    }
+
+
+    @Test
+    void testTransferMoneyIfAmountLess1() throws Exception {
+        String uniqueAccountId = "Id-" + System.currentTimeMillis();
+        Account account1 = new Account(uniqueAccountId, new BigDecimal("100"));
+        accountsService.createAccount(account1);
+        Account account2 = new Account(uniqueAccountId + "2223", new BigDecimal("20"));
+        accountsService.createAccount(account2);
+        mockMvc.perform(put("/v1/accounts/transfer/" + account1.getAccountId() + "/" + account2.getAccountId() + "?amount=0"))
+                .andExpectAll(status().isBadRequest(), jsonPath("$.msg").value("transfer.amount: must be greater than or equal to 1"));
+
+    }
 }

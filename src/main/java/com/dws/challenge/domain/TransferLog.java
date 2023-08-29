@@ -43,8 +43,4 @@ public class TransferLog {
         this.status = status;
         this.updatedAt = updatedAt;
     }
-
-    public TransferLog copyOf() {
-        return new TransferLog(this.id, this.fromAccountId, this.toAccountId, this.amount, this.status, this.updatedAt);
-    }
 }

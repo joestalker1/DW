@@ -1,3 +1,5 @@
+Fault-tolerant Transfer Account Service with the advisory lock and Write Ahead Log to rollback the failed transactions effeciently.
+
 - To run the application,please type './gradlew run'
 - Added new endpoint (PUT) "/v1/accounts/transfer/{fromAccount}/{toAccount}?amount={number}"
 
